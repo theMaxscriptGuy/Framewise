@@ -31,7 +31,7 @@ class MarkupView(QtWidgets.QGraphicsView):
         scene.clear()
         self._background_item = scene.addPixmap(pixmap)
         self._background_item.setZValue(0)
-        scene.setSceneRect(pixmap.rect())
+        scene.setSceneRect(QtCore.QRectF(pixmap.rect()))
         self.fitInView(scene.sceneRect(), QtCore.Qt.KeepAspectRatio)
 
     def set_mode(self, mode: str) -> None:
