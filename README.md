@@ -25,3 +25,6 @@ python main.py
 ## Notes
 - Reviews store the original `video_path`, so keep the video file accessible when reloading a review.
 - JSON review files include comments and markups per frame.
+
+## Demo
+https://youtu.be/VbyyQMpwgbg
