@@ -24,6 +24,12 @@ class MarkupView(QtWidgets.QGraphicsView):
         self._current_rect_item: Optional[QtWidgets.QGraphicsRectItem] = None
         self._start_pos: Optional[QtCore.QPointF] = None
         self._pen_started = False
+        self._zoom = 1.0
+        self._zoom_step = 1.15
+        self._min_zoom = 0.2
+        self._max_zoom = 8.0
+        self.setTransformationAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
+        self.setResizeAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
 
     def set_frame(self, pixmap: QtGui.QPixmap) -> None:
         scene = self.scene()
@@ -33,7 +39,9 @@ class MarkupView(QtWidgets.QGraphicsView):
         self._background_item = scene.addPixmap(pixmap)
         self._background_item.setZValue(0)
         scene.setSceneRect(QtCore.QRectF(pixmap.rect()))
+        self.reset_zoom()
         self.fitInView(scene.sceneRect(), QtCore.Qt.KeepAspectRatio)
+        self._zoom = 1.0
 
     def set_mode(self, mode: str) -> None:
         self._mode = mode
@@ -43,6 +51,34 @@ class MarkupView(QtWidgets.QGraphicsView):
 
     def set_width(self, width: int) -> None:
         self._width = max(1, int(width))
+
+    def zoom_in(self) -> None:
+        self._apply_zoom(self._zoom_step)
+
+    def zoom_out(self) -> None:
+        self._apply_zoom(1.0 / self._zoom_step)
+
+    def reset_zoom(self) -> None:
+        self.resetTransform()
+        self._zoom = 1.0
+
+    def _apply_zoom(self, factor: float) -> None:
+        next_zoom = self._zoom * factor
+        if next_zoom < self._min_zoom or next_zoom > self._max_zoom:
+            return
+        self.scale(factor, factor)
+        self._zoom = next_zoom
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
+        if event.modifiers() & QtCore.Qt.ControlModifier:
+            angle = event.angleDelta().y()
+            if angle > 0:
+                self.zoom_in()
+            elif angle < 0:
+                self.zoom_out()
+            event.accept()
+            return
+        super().wheelEvent(event)
 
     def clear_markups(self) -> None:
         scene = self.scene()

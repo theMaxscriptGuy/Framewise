@@ -69,6 +69,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._color_button = QtWidgets.QPushButton("Color")
         self._color_button.setAutoDefault(False)
 
+        self._zoom_in_button = QtWidgets.QPushButton("Zoom In")
+        self._zoom_out_button = QtWidgets.QPushButton("Zoom Out")
+        self._zoom_reset_button = QtWidgets.QPushButton("Reset Zoom")
+
         tool_layout = QtWidgets.QHBoxLayout()
         tool_layout.addWidget(self._pen_button)
         tool_layout.addWidget(self._rect_button)
@@ -77,11 +81,17 @@ class MainWindow(QtWidgets.QMainWindow):
         tool_layout.addWidget(self._color_button)
         tool_layout.addStretch(1)
 
+        zoom_layout = QtWidgets.QHBoxLayout()
+        zoom_layout.addWidget(self._zoom_in_button)
+        zoom_layout.addWidget(self._zoom_out_button)
+        zoom_layout.addWidget(self._zoom_reset_button)
+
         right_layout = QtWidgets.QVBoxLayout()
         right_layout.addWidget(self._frame_label)
         right_layout.addWidget(self._time_label)
         right_layout.addLayout(tool_layout)
         right_layout.addWidget(self._clear_button)
+        right_layout.addLayout(zoom_layout)
         right_layout.addWidget(QtWidgets.QLabel("Comments"))
         right_layout.addWidget(self._comment_edit, 1)
         right_layout.addWidget(QtWidgets.QLabel("Checkpoints"))
@@ -137,6 +147,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._width_spin.valueChanged.connect(self._change_width)
         self._color_button.clicked.connect(self._change_color)
         self._clear_button.clicked.connect(self._clear_markups)
+        self._zoom_in_button.clicked.connect(self._zoom_in)
+        self._zoom_out_button.clicked.connect(self._zoom_out)
+        self._zoom_reset_button.clicked.connect(self._zoom_reset)
         self._comment_edit.textChanged.connect(self._on_comment_changed)
         self._checkpoint_list.itemActivated.connect(self._on_checkpoint_selected)
 
@@ -274,6 +287,15 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._current_frame_index is not None:
             self._store.update_markups(self._current_frame_index, [])
             self._refresh_checkpoints()
+
+    def _zoom_in(self) -> None:
+        self._markup_view.zoom_in()
+
+    def _zoom_out(self) -> None:
+        self._markup_view.zoom_out()
+
+    def _zoom_reset(self) -> None:
+        self._markup_view.reset_zoom()
 
     @staticmethod
     def _frame_to_pixmap(frame: np.ndarray) -> QtGui.QPixmap:
