@@ -23,6 +23,7 @@ class MarkupView(QtWidgets.QGraphicsView):
         self._current_path_item: Optional[QtWidgets.QGraphicsPathItem] = None
         self._current_rect_item: Optional[QtWidgets.QGraphicsRectItem] = None
         self._start_pos: Optional[QtCore.QPointF] = None
+        self._pen_started = False
 
     def set_frame(self, pixmap: QtGui.QPixmap) -> None:
         scene = self.scene()
@@ -131,9 +132,12 @@ class MarkupView(QtWidgets.QGraphicsView):
         else:
             pen = QtGui.QPen(self._color, self._width)
             path = QtGui.QPainterPath()
-            path.moveTo(scene_pos)
             self._current_path_item = self.scene().addPath(path, pen)
             self._current_path_item.setZValue(1)
+            path = self._current_path_item.path()
+            path.moveTo(scene_pos)
+            self._current_path_item.setPath(path)
+            self._pen_started = True
         event.accept()
 
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
@@ -149,7 +153,11 @@ class MarkupView(QtWidgets.QGraphicsView):
         if self._mode == "pen" and self._current_path_item:
             scene_pos = self.mapToScene(event.pos())
             path = self._current_path_item.path()
-            path.lineTo(scene_pos)
+            if not self._pen_started or path.elementCount() == 0:
+                path.moveTo(scene_pos)
+                self._pen_started = True
+            else:
+                path.lineTo(scene_pos)
             self._current_path_item.setPath(path)
             event.accept()
             return
@@ -171,6 +179,9 @@ class MarkupView(QtWidgets.QGraphicsView):
             self._current_rect_item = None
         elif self._mode == "pen" and self._current_path_item:
             path = self._current_path_item.path()
+            if not self._pen_started:
+                scene_pos = self.mapToScene(event.pos())
+                path.moveTo(scene_pos)
             points = []
             for i in range(int(path.elementCount())):
                 element = path.elementAt(i)
@@ -183,6 +194,7 @@ class MarkupView(QtWidgets.QGraphicsView):
             )
             self._current_path_item.setData(0, markup)
             self._current_path_item = None
+            self._pen_started = False
         self._start_pos = None
         self.markups_changed.emit()
         event.accept()
