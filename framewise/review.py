@@ -101,3 +101,20 @@ class ReviewStore:
     def update_markups(self, index: int, markups: List[MarkupShape]) -> None:
         frame = self.get_frame(index)
         frame.markups = markups
+
+    def is_frame_reviewed(self, index: int) -> bool:
+        if not self.review:
+            return False
+        data = self.review.frames.get(index)
+        if not data:
+            return False
+        return bool(data.comment.strip()) or bool(data.markups)
+
+    def reviewed_frames(self) -> List[int]:
+        if not self.review:
+            return []
+        reviewed = []
+        for index, data in self.review.frames.items():
+            if data.comment.strip() or data.markups:
+                reviewed.append(index)
+        return sorted(reviewed)

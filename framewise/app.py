@@ -48,6 +48,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._comment_edit = QtWidgets.QTextEdit()
         self._comment_edit.setPlaceholderText("Write comments for this frame...")
 
+        self._checkpoint_list = QtWidgets.QListWidget()
+        self._checkpoint_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+
         self._pen_button = QtWidgets.QToolButton()
         self._pen_button.setText("Pen")
         self._pen_button.setCheckable(True)
@@ -81,6 +84,8 @@ class MainWindow(QtWidgets.QMainWindow):
         right_layout.addWidget(self._clear_button)
         right_layout.addWidget(QtWidgets.QLabel("Comments"))
         right_layout.addWidget(self._comment_edit, 1)
+        right_layout.addWidget(QtWidgets.QLabel("Checkpoints"))
+        right_layout.addWidget(self._checkpoint_list, 1)
 
         right_panel = QtWidgets.QWidget()
         right_panel.setLayout(right_layout)
@@ -132,6 +137,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._width_spin.valueChanged.connect(self._change_width)
         self._color_button.clicked.connect(self._change_color)
         self._clear_button.clicked.connect(self._clear_markups)
+        self._comment_edit.textChanged.connect(self._on_comment_changed)
+        self._checkpoint_list.itemActivated.connect(self._on_checkpoint_selected)
 
     def _open_video(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -151,6 +158,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._frame_slider.setRange(0, max(0, info.frame_count - 1))
         self._frame_slider.setValue(0)
         self._load_frame(0)
+        self._refresh_checkpoints()
 
     def _load_review(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -174,6 +182,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._frame_slider.setRange(0, max(0, self._video.info.frame_count - 1))
         self._frame_slider.setValue(0)
         self._load_frame(0)
+        self._refresh_checkpoints()
 
     def _save_review(self) -> None:
         if not self._store.review:
@@ -201,6 +210,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._store.update_comment(self._current_frame_index, comment)
         markups = self._markup_view.export_markups()
         self._store.update_markups(self._current_frame_index, markups)
+        self._refresh_checkpoints()
 
     def _load_frame(self, index: int) -> None:
         if not self._video.is_loaded():
@@ -218,11 +228,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if self._store.review:
             frame_data = self._store.get_frame(index)
-            self._comment_edit.setPlainText(frame_data.comment)
-            self._markup_view.load_markups(frame_data.markups)
+        self._comment_edit.setPlainText(frame_data.comment)
+        self._markup_view.load_markups(frame_data.markups)
 
         self._current_frame_index = index
         self._update_labels(index)
+        self._select_checkpoint(index)
         self._loading_frame = False
 
     def _on_frame_changed(self, index: int) -> None:
@@ -262,6 +273,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._markup_view.clear_markups()
         if self._current_frame_index is not None:
             self._store.update_markups(self._current_frame_index, [])
+            self._refresh_checkpoints()
 
     @staticmethod
     def _frame_to_pixmap(frame: np.ndarray) -> QtGui.QPixmap:
@@ -270,3 +282,39 @@ class MainWindow(QtWidgets.QMainWindow):
         bytes_per_line = channels * width
         image = QtGui.QImage(rgb.data, width, height, bytes_per_line, QtGui.QImage.Format_RGB888)
         return QtGui.QPixmap.fromImage(image)
+
+    def _refresh_checkpoints(self) -> None:
+        if not self._store.review:
+            self._checkpoint_list.clear()
+            return
+        reviewed = self._store.reviewed_frames()
+        self._checkpoint_list.blockSignals(True)
+        self._checkpoint_list.clear()
+        for index in reviewed:
+            time_label = "-"
+            if self._video.info and self._video.info.fps > 0:
+                time_seconds = index / self._video.info.fps
+                time_label = f"{time_seconds:.2f}s"
+            item = QtWidgets.QListWidgetItem(f"Frame {index} ({time_label})")
+            item.setData(QtCore.Qt.UserRole, index)
+            self._checkpoint_list.addItem(item)
+        self._checkpoint_list.blockSignals(False)
+
+    def _select_checkpoint(self, index: int) -> None:
+        for row in range(self._checkpoint_list.count()):
+            item = self._checkpoint_list.item(row)
+            if item and item.data(QtCore.Qt.UserRole) == index:
+                self._checkpoint_list.setCurrentRow(row)
+                return
+        self._checkpoint_list.clearSelection()
+
+    def _on_checkpoint_selected(self, item: QtWidgets.QListWidgetItem) -> None:
+        index = item.data(QtCore.Qt.UserRole)
+        if isinstance(index, int):
+            self._frame_slider.setValue(index)
+
+    def _on_comment_changed(self) -> None:
+        if self._loading_frame or self._current_frame_index is None:
+            return
+        self._store.update_comment(self._current_frame_index, self._comment_edit.toPlainText())
+        self._refresh_checkpoints()
