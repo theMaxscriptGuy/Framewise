@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Optional
 
 import cv2
@@ -17,6 +18,8 @@ class FramewiseApp(QtWidgets.QApplication):
     def __init__(self, argv: list[str]) -> None:
         super().__init__(argv)
         self.setApplicationName("Framewise")
+        # qt-material doesn't register icon search paths for PyQt5, so do it here.
+        QtCore.QDir.addSearchPath("icon", str(Path.home() / ".qt_material" / "theme"))
         apply_stylesheet(self, theme="dark_teal.xml")
         self._window = MainWindow()
 
