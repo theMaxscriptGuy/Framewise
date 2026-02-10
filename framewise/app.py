@@ -14,6 +14,40 @@ from .review import ReviewData, ReviewSaver, ReviewStore
 from .video import VideoLoader
 
 
+class VideoListWidget(QtWidgets.QListWidget):
+    files_dropped = QtCore.pyqtSignal(list)
+
+    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+
+    def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event: QtGui.QDragMoveEvent) -> None:
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event: QtGui.QDropEvent) -> None:
+        if not event.mimeData().hasUrls():
+            super().dropEvent(event)
+            return
+        paths = []
+        for url in event.mimeData().urls():
+            path = url.toLocalFile()
+            if path:
+                paths.append(path)
+        if paths:
+            self.files_dropped.emit(paths)
+            event.acceptProposedAction()
+
+
 class FramewiseApp(QtWidgets.QApplication):
     def __init__(self, argv: list[str]) -> None:
         super().__init__(argv)
@@ -57,6 +91,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._checkpoint_list = QtWidgets.QListWidget()
         self._checkpoint_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
 
+        self._video_list = VideoListWidget()
+        self._video_list.setMinimumWidth(220)
+        self._video_list.setToolTip("Drag and drop videos here")
+        self._video_list.setIconSize(QtCore.QSize(160, 90))
+
         self._pen_button = QtWidgets.QToolButton()
         self._pen_button.setText("Pen")
         self._pen_button.setCheckable(True)
@@ -86,43 +125,53 @@ class MainWindow(QtWidgets.QMainWindow):
         self._play_timer.setSingleShot(False)
         self._is_playing = False
 
-        tool_layout = QtWidgets.QHBoxLayout()
-        tool_layout.addWidget(self._pen_button)
-        tool_layout.addWidget(self._rect_button)
-        tool_layout.addWidget(QtWidgets.QLabel("Width"))
-        tool_layout.addWidget(self._width_spin)
-        tool_layout.addWidget(self._color_button)
-        tool_layout.addStretch(1)
-
-        zoom_layout = QtWidgets.QHBoxLayout()
-        zoom_layout.addWidget(self._zoom_in_button)
-        zoom_layout.addWidget(self._zoom_out_button)
-        zoom_layout.addWidget(self._zoom_reset_button)
-
         right_layout = QtWidgets.QVBoxLayout()
-        right_layout.addWidget(self._frame_label)
-        right_layout.addWidget(self._time_label)
-        right_layout.addLayout(tool_layout)
-        right_layout.addWidget(self._clear_button)
-        right_layout.addLayout(zoom_layout)
-        right_layout.addWidget(QtWidgets.QLabel("Comments"))
-        right_layout.addWidget(self._comment_edit, 1)
-        right_layout.addWidget(QtWidgets.QLabel("Checkpoints"))
-        right_layout.addWidget(self._checkpoint_list, 1)
-
-        right_panel = QtWidgets.QWidget()
-        right_panel.setLayout(right_layout)
-        right_panel.setMinimumWidth(320)
 
         center_layout = QtWidgets.QHBoxLayout()
         center_layout.addWidget(self._markup_view, 1)
-        center_layout.addWidget(right_panel)
 
         center_widget = QtWidgets.QWidget()
         center_widget.setLayout(center_layout)
 
+        tools_grid = QtWidgets.QGridLayout()
+        tools_grid.addWidget(self._frame_label, 0, 0, 1, 3)
+        tools_grid.addWidget(self._time_label, 1, 0, 1, 3)
+        tools_grid.addWidget(self._pen_button, 2, 0)
+        tools_grid.addWidget(self._rect_button, 2, 1)
+        tools_grid.addWidget(self._color_button, 3, 0)
+        tools_grid.addWidget(QtWidgets.QLabel("Size"), 3, 1)
+        tools_grid.addWidget(self._width_spin, 3, 2)
+        tools_grid.addWidget(self._clear_button, 4, 0, 1, 3)
+        tools_grid.addWidget(self._zoom_in_button, 5, 0)
+        tools_grid.addWidget(self._zoom_out_button, 5, 1)
+        tools_grid.addWidget(self._zoom_reset_button, 5, 2)
+        tools_grid.addWidget(QtWidgets.QLabel("Comments"), 6, 0, 1, 3)
+        tools_grid.addWidget(self._comment_edit, 7, 0, 1, 3)
+        tools_grid.addWidget(QtWidgets.QLabel("Checkpoints"), 8, 0, 1, 3)
+        tools_grid.addWidget(self._checkpoint_list, 9, 0, 1, 3)
+
+        tools_group = QtWidgets.QGroupBox("Tools")
+        tools_group.setLayout(tools_grid)
+
+        left_layout = QtWidgets.QVBoxLayout()
+        left_layout.addWidget(QtWidgets.QLabel("Videos"))
+        left_layout.addWidget(self._video_list, 1)
+        left_layout.addWidget(tools_group)
+
+        left_panel = QtWidgets.QWidget()
+        left_panel.setLayout(left_layout)
+
+        top_layout = QtWidgets.QHBoxLayout()
+        top_layout.addWidget(left_panel)
+        top_layout.addWidget(center_widget, 1)
+        top_layout.setStretch(0, 0)
+        top_layout.setStretch(1, 1)
+
+        top_widget = QtWidgets.QWidget()
+        top_widget.setLayout(top_layout)
+
         bottom_layout = QtWidgets.QVBoxLayout()
-        bottom_layout.addWidget(center_widget, 1)
+        bottom_layout.addWidget(top_widget, 1)
         timeline_layout = QtWidgets.QHBoxLayout()
         timeline_layout.addWidget(self._play_button)
         timeline_layout.addWidget(self._frame_slider, 1)
@@ -170,6 +219,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._play_timer.timeout.connect(self._playback_tick)
         self._comment_edit.textChanged.connect(self._on_comment_changed)
         self._checkpoint_list.itemActivated.connect(self._on_checkpoint_selected)
+        self._video_list.itemDoubleClicked.connect(self._on_video_item_activated)
+        self._video_list.files_dropped.connect(self._add_videos)
 
     def _open_video(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -218,6 +269,39 @@ class MainWindow(QtWidgets.QMainWindow):
         self._load_frame(0)
         self._refresh_checkpoints()
         self._stop_playback()
+
+    def _add_videos(self, paths: list[str]) -> None:
+        for path in paths:
+            if not os.path.isfile(path):
+                continue
+            item = QtWidgets.QListWidgetItem(os.path.basename(path))
+            item.setToolTip(path)
+            item.setData(QtCore.Qt.UserRole, path)
+            icon = self._make_thumbnail_icon(path)
+            if icon is not None:
+                item.setIcon(icon)
+            self._video_list.addItem(item)
+
+    def _on_video_item_activated(self, item: QtWidgets.QListWidgetItem) -> None:
+        path = item.data(QtCore.Qt.UserRole)
+        if isinstance(path, str) and path:
+            self._load_video_path(path)
+
+    def _make_thumbnail_icon(self, path: str) -> Optional[QtGui.QIcon]:
+        cap = cv2.VideoCapture(path)
+        if not cap.isOpened():
+            cap.release()
+            return None
+        ok, frame = cap.read()
+        cap.release()
+        if not ok or frame is None:
+            return None
+        pixmap = self._frame_to_pixmap(frame)
+        if pixmap.isNull():
+            return None
+        target_size = self._video_list.iconSize()
+        scaled = pixmap.scaled(target_size, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        return QtGui.QIcon(scaled)
 
     def _save_review(self) -> None:
         if not self._store.review:
