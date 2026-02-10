@@ -14,40 +14,6 @@ from .review import ReviewData, ReviewSaver, ReviewStore
 from .video import VideoLoader
 
 
-class VideoListWidget(QtWidgets.QListWidget):
-    files_dropped = QtCore.pyqtSignal(list)
-
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
-        super().__init__(parent)
-        self.setAcceptDrops(True)
-        self.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
-
-    def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-            return
-        super().dragEnterEvent(event)
-
-    def dragMoveEvent(self, event: QtGui.QDragMoveEvent) -> None:
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-            return
-        super().dragMoveEvent(event)
-
-    def dropEvent(self, event: QtGui.QDropEvent) -> None:
-        if not event.mimeData().hasUrls():
-            super().dropEvent(event)
-            return
-        paths = []
-        for url in event.mimeData().urls():
-            path = url.toLocalFile()
-            if path:
-                paths.append(path)
-        if paths:
-            self.files_dropped.emit(paths)
-            event.acceptProposedAction()
-
-
 class FramewiseApp(QtWidgets.QApplication):
     def __init__(self, argv: list[str]) -> None:
         super().__init__(argv)
@@ -91,10 +57,27 @@ class MainWindow(QtWidgets.QMainWindow):
         self._checkpoint_list = QtWidgets.QListWidget()
         self._checkpoint_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
 
-        self._video_list = VideoListWidget()
-        self._video_list.setMinimumWidth(220)
-        self._video_list.setToolTip("Drag and drop videos here")
-        self._video_list.setIconSize(QtCore.QSize(160, 90))
+        self._file_model = QtWidgets.QFileSystemModel()
+        self._file_model.setFilter(QtCore.QDir.AllDirs | QtCore.QDir.Files | QtCore.QDir.NoDotAndDotDot)
+        self._file_model.setNameFilterDisables(True)
+
+        self._file_tree = QtWidgets.QTreeView()
+        self._file_tree.setModel(self._file_model)
+        self._file_tree.setMinimumWidth(260)
+        self._file_tree.setMinimumHeight(320)
+        self._file_tree.setHeaderHidden(True)
+        self._file_tree.setRootIsDecorated(True)
+        self._file_tree.setItemsExpandable(True)
+
+        desktop_path = Path.home() / "Desktop"
+        if not desktop_path.exists():
+            desktop_path = Path.home()
+        self._file_model.setRootPath(str(desktop_path))
+        self._file_tree.setRootIndex(self._file_model.index(str(desktop_path)))
+        for column in range(1, 4):
+            self._file_tree.setColumnHidden(column, True)
+
+        self._files_label = QtWidgets.QLabel("Files")
 
         self._pen_button = QtWidgets.QToolButton()
         self._pen_button.setText("Pen")
@@ -154,8 +137,8 @@ class MainWindow(QtWidgets.QMainWindow):
         tools_group.setLayout(tools_grid)
 
         left_layout = QtWidgets.QVBoxLayout()
-        left_layout.addWidget(QtWidgets.QLabel("Videos"))
-        left_layout.addWidget(self._video_list, 1)
+        left_layout.addWidget(self._files_label)
+        left_layout.addWidget(self._file_tree, 1)
         left_layout.addWidget(tools_group)
 
         left_panel = QtWidgets.QWidget()
@@ -219,8 +202,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._play_timer.timeout.connect(self._playback_tick)
         self._comment_edit.textChanged.connect(self._on_comment_changed)
         self._checkpoint_list.itemActivated.connect(self._on_checkpoint_selected)
-        self._video_list.itemDoubleClicked.connect(self._on_video_item_activated)
-        self._video_list.files_dropped.connect(self._add_videos)
+        self._file_tree.doubleClicked.connect(self._on_file_activated)
 
     def _open_video(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -270,38 +252,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self._refresh_checkpoints()
         self._stop_playback()
 
-    def _add_videos(self, paths: list[str]) -> None:
-        for path in paths:
-            if not os.path.isfile(path):
-                continue
-            item = QtWidgets.QListWidgetItem(os.path.basename(path))
-            item.setToolTip(path)
-            item.setData(QtCore.Qt.UserRole, path)
-            icon = self._make_thumbnail_icon(path)
-            if icon is not None:
-                item.setIcon(icon)
-            self._video_list.addItem(item)
-
-    def _on_video_item_activated(self, item: QtWidgets.QListWidgetItem) -> None:
-        path = item.data(QtCore.Qt.UserRole)
-        if isinstance(path, str) and path:
+    def _on_file_activated(self, index: QtCore.QModelIndex) -> None:
+        if not index.isValid():
+            return
+        path = self._file_model.filePath(index)
+        if os.path.isfile(path) and self._is_video_file(path):
             self._load_video_path(path)
 
-    def _make_thumbnail_icon(self, path: str) -> Optional[QtGui.QIcon]:
-        cap = cv2.VideoCapture(path)
-        if not cap.isOpened():
-            cap.release()
-            return None
-        ok, frame = cap.read()
-        cap.release()
-        if not ok or frame is None:
-            return None
-        pixmap = self._frame_to_pixmap(frame)
-        if pixmap.isNull():
-            return None
-        target_size = self._video_list.iconSize()
-        scaled = pixmap.scaled(target_size, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
-        return QtGui.QIcon(scaled)
+    @staticmethod
+    def _is_video_file(path: str) -> bool:
+        ext = os.path.splitext(path)[1].lower()
+        return ext in {".mp4", ".mov", ".avi", ".mkv"}
 
     def _save_review(self) -> None:
         if not self._store.review:
@@ -347,8 +308,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if self._store.review:
             frame_data = self._store.get_frame(index)
-        self._comment_edit.setPlainText(frame_data.comment)
-        self._markup_view.load_markups(frame_data.markups)
+            self._comment_edit.setPlainText(frame_data.comment)
+            self._markup_view.load_markups(frame_data.markups)
 
         self._current_frame_index = index
         self._update_labels(index)
