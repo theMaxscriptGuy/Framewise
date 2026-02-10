@@ -78,6 +78,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self._zoom_in_button = QtWidgets.QPushButton("Zoom In")
         self._zoom_out_button = QtWidgets.QPushButton("Zoom Out")
         self._zoom_reset_button = QtWidgets.QPushButton("Reset Zoom")
+        self._play_button = QtWidgets.QToolButton()
+        self._play_button.setAutoRaise(True)
+        self._play_button.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
+
+        self._play_timer = QtCore.QTimer(self)
+        self._play_timer.setSingleShot(False)
+        self._is_playing = False
 
         tool_layout = QtWidgets.QHBoxLayout()
         tool_layout.addWidget(self._pen_button)
@@ -116,7 +123,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         bottom_layout = QtWidgets.QVBoxLayout()
         bottom_layout.addWidget(center_widget, 1)
-        bottom_layout.addWidget(self._frame_slider)
+        timeline_layout = QtWidgets.QHBoxLayout()
+        timeline_layout.addWidget(self._play_button)
+        timeline_layout.addWidget(self._frame_slider, 1)
+        bottom_layout.addLayout(timeline_layout)
 
         container = QtWidgets.QWidget()
         container.setLayout(bottom_layout)
@@ -156,6 +166,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._zoom_in_button.clicked.connect(self._zoom_in)
         self._zoom_out_button.clicked.connect(self._zoom_out)
         self._zoom_reset_button.clicked.connect(self._zoom_reset)
+        self._play_button.clicked.connect(self._toggle_playback)
+        self._play_timer.timeout.connect(self._playback_tick)
         self._comment_edit.textChanged.connect(self._on_comment_changed)
         self._checkpoint_list.itemActivated.connect(self._on_checkpoint_selected)
 
@@ -205,6 +217,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._frame_slider.setValue(0)
         self._load_frame(0)
         self._refresh_checkpoints()
+        self._stop_playback()
 
     def _save_review(self) -> None:
         if not self._store.review:
@@ -264,6 +277,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._current_frame_index is not None:
             self._commit_current_frame()
         self._load_frame(index)
+        if self._is_playing and self._video.info and index >= self._video.info.frame_count - 1:
+            self._stop_playback()
 
     def _update_labels(self, index: int) -> None:
         self._frame_label.setText(f"Frame: {index}")
@@ -305,6 +320,39 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _zoom_reset(self) -> None:
         self._markup_view.reset_zoom()
+
+    def _toggle_playback(self) -> None:
+        if not self._video.is_loaded():
+            return
+        if self._is_playing:
+            self._stop_playback()
+            return
+        self._frame_slider.setValue(0)
+        self._start_playback()
+
+    def _start_playback(self) -> None:
+        if not self._video.info:
+            return
+        fps = self._video.info.fps if self._video.info.fps > 0 else 30.0
+        interval_ms = max(1, int(1000 / fps))
+        self._play_timer.start(interval_ms)
+        self._is_playing = True
+        self._play_button.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPause))
+
+    def _stop_playback(self) -> None:
+        self._play_timer.stop()
+        self._is_playing = False
+        self._play_button.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
+
+    def _playback_tick(self) -> None:
+        if not self._video.info:
+            self._stop_playback()
+            return
+        next_index = 0 if self._current_frame_index is None else self._current_frame_index + 1
+        if next_index >= self._video.info.frame_count:
+            self._stop_playback()
+            return
+        self._frame_slider.setValue(next_index)
 
     @staticmethod
     def _frame_to_pixmap(frame: np.ndarray) -> QtGui.QPixmap:
