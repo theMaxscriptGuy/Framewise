@@ -6,6 +6,7 @@ from typing import Optional
 import cv2
 import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
+from qt_material import apply_stylesheet
 
 from .markup import MarkupView
 from .review import ReviewData, ReviewSaver, ReviewStore
@@ -16,6 +17,7 @@ class FramewiseApp(QtWidgets.QApplication):
     def __init__(self, argv: list[str]) -> None:
         super().__init__(argv)
         self.setApplicationName("Framewise")
+        apply_stylesheet(self, theme="dark_teal.xml")
         self._window = MainWindow()
 
     def run(self) -> int:

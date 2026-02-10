@@ -1,6 +1,6 @@
 # Framewise
 
-Framewise is a Python + Qt5 video review tool. It lets you load a video, scrub frame-by-frame, add markups, attach comments per frame, and save/load reviews as JSON.
+Framewise is a Python + Qt5 video review tool. It lets you load a video, scrub frame-by-frame, add markups, attach comments per frame, and save/load reviews as JSON. The UI uses `qt-material` for a professional Material-inspired theme.
 
 ## Features
 - Load video files and scrub frame-by-frame
