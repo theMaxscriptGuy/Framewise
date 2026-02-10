@@ -30,6 +30,7 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.setWindowTitle("Framewise")
         self.resize(1200, 800)
+        self.setAcceptDrops(True)
 
         self._video = VideoLoader()
         self._store = ReviewStore()
@@ -161,19 +162,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         if not path:
             return
-        try:
-            info = self._video.load(path)
-        except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, "Error", str(exc))
-            return
-
-        review = ReviewData(video_path=info.path, fps=info.fps, frame_count=info.frame_count)
-        self._store.set_review(review)
-        self._frame_slider.setEnabled(True)
-        self._frame_slider.setRange(0, max(0, info.frame_count - 1))
-        self._frame_slider.setValue(0)
-        self._load_frame(0)
-        self._refresh_checkpoints()
+        self._load_video_path(path)
 
     def _load_review(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -195,6 +184,21 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._frame_slider.setEnabled(True)
         self._frame_slider.setRange(0, max(0, self._video.info.frame_count - 1))
+        self._frame_slider.setValue(0)
+        self._load_frame(0)
+        self._refresh_checkpoints()
+
+    def _load_video_path(self, path: str) -> None:
+        try:
+            info = self._video.load(path)
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, "Error", str(exc))
+            return
+
+        review = ReviewData(video_path=info.path, fps=info.fps, frame_count=info.frame_count)
+        self._store.set_review(review)
+        self._frame_slider.setEnabled(True)
+        self._frame_slider.setRange(0, max(0, info.frame_count - 1))
         self._frame_slider.setValue(0)
         self._load_frame(0)
         self._refresh_checkpoints()
@@ -306,6 +310,24 @@ class MainWindow(QtWidgets.QMainWindow):
         bytes_per_line = channels * width
         image = QtGui.QImage(rgb.data, width, height, bytes_per_line, QtGui.QImage.Format_RGB888)
         return QtGui.QPixmap.fromImage(image)
+
+    def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dropEvent(self, event: QtGui.QDropEvent) -> None:
+        if not event.mimeData().hasUrls():
+            super().dropEvent(event)
+            return
+        urls = event.mimeData().urls()
+        if not urls:
+            return
+        path = urls[0].toLocalFile()
+        if path:
+            self._load_video_path(path)
+            event.acceptProposedAction()
 
     def _refresh_checkpoints(self) -> None:
         if not self._store.review:
